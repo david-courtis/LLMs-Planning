@@ -25,13 +25,11 @@ def parse_problem(problem, data, shuffle):
             try:
                 pred_string = data['predicates'][atom.symbol.name].format(*objs)
                 predicates.append(pred_string)
-            except Exception as e:
-                print("[-]: Exception in parsing predicates: {}".format(e))
-                print("[-]: Predicate not found in predicates dict: {}".format(atom.symbol.name))
+            except:
+                # print("[-]: Predicate not found in predicates dict: {}".format(atom.symbol.name))
                 pass
-        
+            
         if len(predicates) > 1:
-            predicates = [item for item in predicates if item]
             TEXT += ", ".join(predicates[:-1]) + f" and {predicates[-1]}"
         else:
             TEXT += predicates[0]
@@ -58,24 +56,27 @@ def parse_problem(problem, data, shuffle):
 
 
 
-def fill_template(INIT, GOAL, PLAN, data, instruction=False):
+def fill_template(INIT, GOAL, PLAN, data, zero_shot=False, o4=False):
     text = ""
     if INIT != "":
         text += "\n[STATEMENT]\n"
-        text += f"As initial conditions I have that, {INIT.strip()}."
+        text += f"As initial conditions I have that: {INIT.strip()}."
     if GOAL != "":
-        text += f"\nMy goal is to have that {GOAL}."
-    if not instruction:
-        text += f"\n\nMy plan is as follows:\n\n[PLAN]{PLAN}"
+        text += f"\nMy goal is for the following to be true: {GOAL}."
+    if not zero_shot:
+        if o4:
+            text += f"\n\nProvide the plan for the above problem between these two tags [PLAN] and [PLAN END]."
+        else:
+            text += f"\n\nMy plan is as follows:\n\n[PLAN]{PLAN}"
     else:
-        text += f"\n\nWhat is the plan to achieve my goal? Just give the actions in the plan."
+        text += f"\n\nTo solve the problem, you will have to provide which actions to take from the initial conditions and in which order in order to achieve the goal conditions. Provide the plan by giving the action names along with the objects \"ACTION_NAME OBJECTS\". Provide the plan between these two tags [PLAN] and [PLAN END]."
 
     # TODO: Add this replacement to the yml file -- Use "Translations" dict in yml
     if 'blocksworld' in data['domain_name']:
         text = text.replace("-", " ").replace("ontable", "on the table")
     return text
 
-def instance_to_text(problem, get_plan, data, shuffle=False):
+def instance_to_text(problem, get_plan, data, shuffle=False, plan=None):
     """
     Function to make an instance into human-readable format
     """
@@ -90,8 +91,9 @@ def instance_to_text(problem, get_plan, data, shuffle=False):
     plan_file = "sas_plan"
     if get_plan:
         PLAN = "\n"
-        with open(plan_file) as f:
-            plan = [line.rstrip() for line in f][:-1]
+        if plan==None:
+            with open(plan_file) as f:
+                plan = [line.rstrip() for line in f][:-1]
 
         for action in plan:
             action = action.strip("(").strip(")")
@@ -139,5 +141,4 @@ def get_plan_as_text(data, given_plan=None):
         PLAN += "(" + act_name + " " + " ".join(objs) + ")\n"
         # PLAN += data['actions'][act_name].format(*objs) + "\n"
     return PLAN
-
 
