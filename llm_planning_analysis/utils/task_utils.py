@@ -1,7 +1,16 @@
 import random
 import os
+import json
+import logging
 
-
+logging.basicConfig(
+    filename='text_to_pddl.log',
+    encoding='utf-8',
+    filemode='a',
+    format='%(asctime)s - %(message)s',
+    style='%',
+    datefmt='%d-%b-%y %H:%M:%S',
+)
 def get_action_text(action, data):
     pred = action.split('_')
     if 'blocksworld' in data['domain_name']:
@@ -9,7 +18,11 @@ def get_action_text(action, data):
     elif 'logistics' in data['domain_name']:
         # print(pred)
         objs = [data["encoded_objects"][obj[0]].format(*[chr for chr in obj if chr.isdigit()]) for obj in pred[1:]]
-    return data['actions'][pred[0]].format(*objs)
+    try:
+        return data['actions'][pred[0]].format(*objs)
+    except KeyError:
+        print(f"KeyError: {pred[0]}", action)
+        return action
 
 
 
@@ -21,6 +34,7 @@ def get_state_translation(state, data):
     STATE = ""
     state_text = []
     for i in sorted(state):
+        #Assume ground state
         pred = i.split('_')
         if 'obfuscated' in DATA["domain_name"]:
             objs = [j.replace('o','object_') for j in pred[1:]]
@@ -143,6 +157,9 @@ def parsed_instance_to_text_blocksworld(initial_state, plan, goal_state, data, a
     PLAN = ""
     plan_text = "\n"
     for i in plan:
+        if i=="":
+            print("[-] ERROR, Empty action: ", plan)
+            continue
         action = get_action_text(i, data)
         plan_text += action + "\n"
     if not action_seq:
@@ -278,64 +295,124 @@ def plan_execution(planexecutor, data, give_response):
 
     return text, list(resulting_state)
 
-def plan_verification_zero_shot(planexecutor, data, llm_plan=None):
-    if llm_plan is None:
-        example_type = random.choice([-1, 0, 1])
-        plan, cost = planexecutor.get_plan(planexecutor.pr_domain, planexecutor.pr_problem)       
 
-        if example_type == -1: #Inexecutable 
-            if len(plan)>2:
-                to_del = random.choice(range(1, len(plan)-1))
-            else:
-                to_del = 1
-            plan = plan[:to_del]+plan[to_del+1:]
-            random.shuffle(plan)
-        elif example_type==0: #Unsatisfied goal
-            #Pick a prefix of the plan
-            prefix= random.choice(range(0, len(plan)-1))
-            plan = plan[:prefix]
-        else:
-            pass
-    else:
-        plan = llm_plan
+
+def plan_verification_zero_shot_all_types(planexecutor, data, plan, llm_plan=None):
+    if llm_plan:
         plan = [action.replace('(', '').replace(')', '') for action in plan]
-        plan = ["_".join(action.split(' ')) for action in plan]
-    
+        plan = ["_".join(action.split(' ')) for action in plan]    
     initial_state = planexecutor.init_state
     goal_state = planexecutor.goal_state    
     INIT, PLAN, GOAL = parsed_instance_to_text_blocksworld(initial_state, plan, goal_state, data)
+    text = f'\n[STATEMENT]\nAs initial conditions I have that, {INIT.strip()}.\nMy goal is to have that {GOAL}. \nMy plan is as follows:\n\n[PLAN]{PLAN}\nVerify whether the above plan is valid. Reason out on whether the plan fails and why it fails. '
+    return text  
+
+def plan_verification_zero_shot_all_types_val_form(planexecutor, data, plan, llm_plan=None,cot=False):
+    if llm_plan:
+        plan = [action.replace('(', '').replace(')', '') for action in plan]
+        plan = ["_".join(action.split(' ')) for action in plan]    
+    initial_state = planexecutor.init_state
+    goal_state = planexecutor.goal_state    
+    INIT, PLAN, GOAL = parsed_instance_to_text_blocksworld(initial_state, plan, goal_state, data)
+    text = f'\n[STATEMENT]\nAs initial conditions I have that, {INIT.strip()}.\nMy goal is to have that {GOAL}. \nMy plan is as follows:\n\n[PLAN]{PLAN}\nVerify whether the above plan is valid. Provide a JSON between tags [JSON] and [JSON_END] for the verification information. The JSON should contain three main keys: If the plan is invalid and inexecutable then include (1) "unmet_preconditions": This contains two more keys; (1.1) "action": This is the name of the first action that renders the plan inexecutable (1.2) "preconditions": A list of unmet preconditions for the mentioned action; If the plan is executable but not goal reaching then include (2) "unmet_goals": A list of unmet goal conditions in the JSON. Finally include (3) "valid": a binary value that tells if the plan is valid or not i.e., the plan when executed satisfies the goal conditions. Include only one of the keys (1) or (2) based on the type of plan invalidity.'
+    if cot:
+        text = f'\n[STATEMENT]\nAs initial conditions I have that, {INIT.strip()}.\nMy goal is to have that {GOAL}. \nMy plan is as follows:\n\n[PLAN]{PLAN}\nVerify whether the above plan is valid. You will think step by step and output intermediate reasoning steps and thoughts for the verification after the [THOUGHTS] tag. Then, provide a JSON between the tags [JSON] and [JSON_END] for the verification information. The JSON should contain three main keys: If the plan is invalid and inexecutable then include (1) "unmet_preconditions": This contains two more keys; (1.1) "action": This is the name of the first action that renders the plan inexecutable (1.2) "preconditions": A list of unmet preconditions for the mentioned action; If the plan is executable but not goal reaching then include (2) "unmet_goals": A list of unmet goal conditions in the JSON. Finally include (3) "valid": a binary value that tells if the plan is valid or not i.e., the plan when executed satisfies the goal conditions. Include only one of the keys (1) or (2) based on the type of plan invalidity.'
+        text+=f"\nLet's think step by step\n[THOUGHTS]\n"
+
+    return text    
+
+def plan_verification_zero_shot(INIT, PLAN, GOAL,cot=False):
     text = f'\n[STATEMENT]\nAs initial conditions I have that, {INIT.strip()}.\nMy goal is to have that {GOAL}. \nMy plan is as follows:\n\n[PLAN]{PLAN}\nVerify whether the above plan is valid. If it is valid, please say "Plan is valid." and nothing else. If it is invalid, please say "Plan is invalid." and then provide feedback on why the plan fails.'
+    if cot:
+        text = f'\n[STATEMENT]\nAs initial conditions I have that, {INIT.strip()}.\nMy goal is to have that {GOAL}. \nMy plan is as follows:\n\n[PLAN]{PLAN}\nVerify whether the above plan is valid. You will think step by step and output intermediate reasoning steps and thoughts for the verification after the [THOUGHTS] tag. Then provide the required feedback on why the plan fails if it fails.'
+        text+=f"\nLet's think step by step\n[THOUGHTS]\n"
     return text
 
+def plan_verification_zero_shot_val_form(INIT, PLAN, GOAL,cot=False):
+    # if llm_plan is None:
+    #     example_type = random.choice([-1, 0, 1])
+    #     plan, cost = planexecutor.get_plan(planexecutor.pr_domain, planexecutor.pr_problem)       
 
-def plan_verification_zero_shot_val_form(planexecutor, data, llm_plan=None):
-    if llm_plan is None:
-        example_type = random.choice([-1, 0, 1])
-        plan, cost = planexecutor.get_plan(planexecutor.pr_domain, planexecutor.pr_problem)       
-
-        if example_type == -1: #Inexecutable 
-            if len(plan)>2:
-                to_del = random.choice(range(1, len(plan)-1))
-            else:
-                to_del = 1
-            plan = plan[:to_del]+plan[to_del+1:]
-            random.shuffle(plan)
-        elif example_type==0: #Unsatisfied goal
-            #Pick a prefix of the plan
-            prefix= random.choice(range(0, len(plan)-1))
-            plan = plan[:prefix]
-        else:
-            pass
-    else:
-        plan = llm_plan
-        plan = [action.replace('(', '').replace(')', '') for action in plan]
-        plan = ["_".join(action.split(' ')) for action in plan]
+    #     if example_type == -1: #Inexecutable 
+    #         if len(plan)>2:
+    #             to_del = random.choice(range(1, len(plan)-1))
+    #         else:
+    #             to_del = 1
+    #         plan = plan[:to_del]+plan[to_del+1:]
+    #         random.shuffle(plan)
+    #     elif example_type==0: #Unsatisfied goal
+    #         #Pick a prefix of the plan
+    #         prefix= random.choice(range(0, len(plan)-1))
+    #         plan = plan[:prefix]
+    #     else:
+    #         pass
+    # else:
+    #     plan = llm_plan
+    #     plan = [action.replace('(', '').replace(')', '') for action in plan]
+    #     plan = ["_".join(action.split(' ')) for action in plan]
     
-    initial_state = planexecutor.init_state
-    goal_state = planexecutor.goal_state    
-    INIT, PLAN, GOAL = parsed_instance_to_text_blocksworld(initial_state, plan, goal_state, data)
-    text = f'\n[STATEMENT]\nAs initial conditions I have that, {INIT.strip()}.\nMy goal is to have that {GOAL}. \nMy plan is as follows:\n\n[PLAN]{PLAN}\nVerify whether the above plan is valid. If it is valid, please say "Plan is valid." and nothing else. If it is invalid, please say "Plan is invalid." and then provide feedback on why the plan fails according to the following format. If the plan is inexecutable, provide the first action that is inexecutable and the unmet preconditions in the following format: The following action [action name] has unmet preconditions [list of preconditions]. If the plan is executable but does not satisfy the goal, provide the unmet goal conditions.'
+    # initial_state = planexecutor.init_state
+    # goal_state = planexecutor.goal_state    
+    # INIT, PLAN, GOAL = parsed_instance_to_text_blocksworld(initial_state, plan, goal_state, data)
+    text = f'\n[STATEMENT]\nAs initial conditions I have that, {INIT.strip()}.\nMy goal is to have that {GOAL}. \nMy plan is as follows:\n\n[PLAN]{PLAN}\nVerify whether the above plan is valid. Provide a JSON between tags [JSON] and [JSON_END] for the verification information. The JSON should contain three main keys: If the plan is invalid and inexecutable then include (1) "unmet_preconditions": This contains two more keys; (1.1) "action": This is the name of the first action that renders the plan inexecutable (1.2) "preconditions": A list of unmet preconditions for the mentioned action; If the plan is executable but not goal reaching then include (2) "unmet_goals": A list of unmet goal conditions in the JSON. Finally include (3) "valid": a binary value that tells if the plan is valid or not i.e., the plan when executed satisfies the goal conditions. Include only one of the keys (1) or (2) based on the type of plan invalidity.'
+    if cot:
+        text = f'\n[STATEMENT]\nAs initial conditions I have that, {INIT.strip()}.\nMy goal is to have that {GOAL}. \nMy plan is as follows:\n\n[PLAN]{PLAN}\nVerify whether the above plan is valid. You will think step by step and output intermediate reasoning steps and thoughts for the verification after the [THOUGHTS] tag. Then, provide a JSON between the tags [JSON] and [JSON_END] for the verification information. The JSON should contain three main keys: If the plan is invalid and inexecutable then include (1) "unmet_preconditions": This contains two more keys; (1.1) "action": This is the name of the first action that renders the plan inexecutable (1.2) "preconditions": A list of unmet preconditions for the mentioned action; If the plan is executable but not goal reaching then include (2) "unmet_goals": A list of unmet goal conditions in the JSON. Finally include (3) "valid": a binary value that tells if the plan is valid or not i.e., the plan when executed satisfies the goal conditions. Include only one of the keys (1) or (2) based on the type of plan invalidity.'
+        text+=f"\nLet's think step by step\n[THOUGHTS]\n"
+
     return text
+
+def check_correctness(query, val_form):
+    if val_form:
+        try:
+            json_data = query.split("[JSON]")[1].split("[JSON_END]")[0].strip()
+        except:
+            print("[-] JSON not found checking ```json")
+            if "```json" in query:
+                json_data = query.split("```json")[1].split("```")[0].strip()
+            else:
+                json_data = query.split("[JSON_END]")[0].strip()
+        try:
+            json_data = json.loads(json_data)
+            print(json_data)
+        except:
+            if "plan is valid" in query.lower():
+                return True
+            return False
+        try:
+            return json_data['valid']
+        except:
+            return False
+    for line in query.split('\n'):
+        if 'plan is valid' in line.lower():
+            return True
+    return False
+
+def get_llm_verifier_json(query, val_form):
+    if val_form:
+        try:
+            json_data = query.split("[JSON]")[1].split("[JSON_END]")[0].strip()
+        except:
+            # print("[-] JSON not found checking ```json")
+            if "```json" in query:
+                json_data = query.split("```json")[1].split("```")[0].strip()
+            else:
+                json_data = query.split("[JSON_END]")[0].strip()
+        try:
+            json_data = json.loads(json_data)
+            # json_data['unmet_info'] = {}
+            # if "unmet_preconditions" in json_data:
+            #     json_data['unmet_info']['unmet_precond'] = json_data['unmet_preconditions']
+            # else:
+            #     json_data['unmet_info']['unmet_precond'] = []
+            # if "unmet_goals" in json_data:
+            #     json_data['unmet_info']['unmet_goal'] = json_data['unmet_goals']
+            # else:
+            #     json_data['unmet_info']['unmet_goal'] = []
+            return json_data
+            
+        except:
+            print(json_data)
+            return None
     
 
 def plan_verification(planexecutor, data, run_val, give_response=False, example_type=None, llm_plan=None):
@@ -452,10 +529,28 @@ def reformat_feedback(feedback):
                 unmet_goal.append(line)
         return unmet_precond, unmet_goal
 
+def val_feedback_plan_exec(planexecutor, plan, data):
+    with open('sas_plan_ver', 'w') as f:
+        for action in plan:
+            action = action.strip('()')
+            if planexecutor.is_pr_grounded:
+                action = "_".join(action.split(' '))
+            else:
+                action = " ".join(action.split('_'))
+            f.write(f'({action})\n')
+    domain = planexecutor.pr_domain
+    problem = planexecutor.pr_problem
+    val_feedback_dict = get_val_feedback(domain, problem, 'sas_plan_ver')
+    if val_feedback_dict['validation_info']['is_valid_plan']:
+        return "The above plan is valid."
+    val_message = get_validation_message(val_feedback_dict, data)
+    return val_message
+
 def get_val_feedback(domain_file, instance_file, plan_file):
     val = os.environ.get('VAL')
-    cmd = f'{val}/validate -v {domain_file} {instance_file} {plan_file}'
+    cmd = f'{val}/Validate -v {domain_file} {instance_file} {plan_file}'
     response = os.popen(cmd).read()
+    logging.info(response)
     plan_valid = 'Plan valid' in response
     feedback = []
     repair = False
@@ -467,20 +562,74 @@ def get_val_feedback(domain_file, instance_file, plan_file):
             repair = False
         if repair and line:
             feedback.append(line)
-    print(feedback)
+    # print(feedback)
     unmet_precond, unmet_goal = reformat_feedback(feedback)
+    if not len(unmet_precond) and not len(unmet_goal) and not plan_valid:
+        print(f"[-] No unmet preconditions found in response: {response}")
     feedback_dict = {
         'validation_info': {'is_valid_plan': plan_valid},
         'validation_message': '\n'.join(unmet_goal) if unmet_goal else '\n'.join(unmet_precond),
         'unmet_info': {'unmet_precond': unmet_precond, 'unmet_goal': unmet_goal}
     }
     return feedback_dict
-        
 
-def get_validation_message(val_message, data):
+def get_validation_message_for_llm(val_message):
+    error_message = "The above plan is invalid."
+    critique_message = ""
+    if 'unmet_preconditions' in val_message:
+        critique_message += " The following action has unmet preconditions:\n"
+        critique_message += val_message['unmet_preconditions']['action']
+        critique_message += "\nThe unmet preconditions are:\n"
+        critique_message += ' '.join(val_message['unmet_preconditions']['preconditions'])
+    elif 'unmet_goals' in val_message:
+        critique_message += " The following goal conditions are unmet:\n"
+        critique_message += ' '.join(val_message['unmet_goals'])
+    return error_message, critique_message
+
+def get_validation_message(val_message, data, feedback_type=1, pddl=False,val_validator=True):
+    '''
+    Returns a validation message given data from a validator. Works with VAL
+    validator as well as custom validator. Since the validators format information
+    differently, the type of validator should be expressed with val_validator
+    to allow better parsing (set to true if VAL is used or false if the custom
+    validator is used).
+
+    Different amounts of feedback can be provided in the message. A message can
+    contain a single issue, no issues, or all issues. VAL only provides enough
+    data to generate single issue or no issue prompts, so it cannot be used
+    with full feedback (val_validator cannot be True if feedback_type is 2).
+
+    Feedback types:
+    0 - no feedback
+    1 - first issue found by VAL
+    2 - full feedback
+    '''
+    if val_validator and feedback_type==2:
+        print("ERROR: Full error message cannot be generated from VAL feedback. Use custom validator instead.")
+        return
+
     unmet_precond, unmet_goal = val_message['unmet_info']['unmet_precond'], val_message['unmet_info']['unmet_goal']
     
     error_message = "The above plan is invalid."
+
+    if feedback_type==0:
+        return error_message, ""
+
+    if val_validator and feedback_type==1:
+        # Only needed to generate message from single error. VAL cannot
+        # be used for multiple errors.
+        return error_message, get_val_error_message(unmet_precond, unmet_goal, data, pddl)
+    elif feedback_type==1 or feedback_type==2:
+        return error_message, get_custom_validator_error_message(unmet_precond, unmet_goal, data, feedback_type==2)
+    
+    return
+
+def get_val_error_message(unmet_precond, unmet_goal, data, pddl=False):
+    '''
+    Generates a single error validation message using data from VAL.
+    '''
+
+    error_message = ""
 
     if unmet_goal:
         is_joint = "and" in unmet_goal[1]
@@ -491,7 +640,10 @@ def get_validation_message(val_message, data):
             " This is the unmet goal condition:\n"
     elif unmet_precond:
         timestep = unmet_precond[0].split("\n")[0].split(" ")[-1]
-        action = unmet_precond[0].split("(")[1].split(")")[0].replace(" ", "_")
+        if not pddl:
+            action = unmet_precond[0].split("(")[1].split(")")[0].replace(" ", "_")
+        else:
+            action = unmet_precond[0].split("(")[1].split(")")[0]
         is_joint = "(and" in unmet_precond[1]
         first_predicate = 2 if is_joint else 1
         last_predicate = len(unmet_precond) - 1 if is_joint else 2
@@ -499,13 +651,56 @@ def get_validation_message(val_message, data):
         error_message += f" The following action at step {timestep} has unmet preconditions:\n" \
             if len(predicates) > 1 else \
             f"The following action at step {timestep} has an unmet precondition:\n"
-        error_message += get_action_text(action, data) + "\n"
+        if not pddl:
+            error_message += get_action_text(action, data) + "\n"
+        else:
+            error_message += action + "\n"
         error_message += "The unmet preconditions are:\n" \
             if len(predicates) > 1 else \
             "The unmet precondition is:\n"
-        
     else:
-        return None
-    error_message += get_state_translation(map(lambda pddl: pddl.strip("()").replace(" ", "_"), predicates), data)
-    
+        return ""
+    if not pddl:
+        error_message += get_state_translation(map(lambda pddl: pddl.strip("()").replace(" ", "_"), predicates), data)
+    else:
+        error_message += ', '.join(predicates[:-1]) + f" and {predicates[-1]}"
+
+    return error_message
+
+def get_custom_validator_error_message(unmet_precon, unmet_goal, data, all_errors=True):
+
+    error_message = ""
+
+    if len(unmet_goal) > 0:
+        if len(unmet_goal) > 1:
+            error_message += "There are unmet goal conditions. These are:\n"
+        else:
+            error_message += "There is an unmet goal condition. This is:\n"
+
+        error_message += get_state_translation(unmet_goal, data) + "\n"
+
+        if not all_errors:
+            return error_message
+        
+    has_found_unmet_action = False
+
+    for timestep, action_pair in enumerate(unmet_precon):
+        action, predicates = action_pair
+        if len(predicates) > 0 and not has_found_unmet_action:
+            error_message += "There are unsatisfied preconditions.\n"
+            has_found_unmet_action = True
+        if len(predicates) > 0:
+            error_message += f" The following action at step {timestep+1} has unmet preconditions:\n" \
+                if len(predicates) > 1 else \
+                f"The following action at step {timestep+1} has an unmet precondition:\n"
+            error_message += get_action_text(action.strip("()").replace(" ", "_"), data) + "\n"
+            error_message += "The unmet preconditions are:\n" \
+                if len(predicates) > 1 else \
+                "The unmet precondition is:\n"
+            
+            error_message += get_state_translation(map(lambda pddl: pddl.strip("()").replace(" ", "_"), predicates), data)
+
+        if not all_errors and has_found_unmet_action:
+            break
+        
     return error_message
