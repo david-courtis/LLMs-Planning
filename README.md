@@ -1,6 +1,6 @@
 # LLMs and Planning
 
-This repo has the code for three papers:
+This repo has the code for four papers:
 1. The code in 'plan-bench' subdirectory belongs to the paper ["PlanBench: An Extensible Benchmark for Evaluating Large Language Models on Planning and Reasoning about Change"](https://arxiv.org/abs/2206.10498)
 2. The code in 'llm_planning_analysis' subdirectory belongs to the paper ["On the Planning Abilities of Large Language Models--A Critical Investigation"](https://arxiv.org/abs/2305.15771)
 3. The code in 'llm_planning_analysis/back_prompting_parallel.py' consists of an implementation of the [LLM-Modulo framework](https://openreview.net/forum?id=Th8JPEmH4z)
