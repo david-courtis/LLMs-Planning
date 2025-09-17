@@ -3,7 +3,8 @@
 This repo has the code for three papers:
 1. The code in 'plan-bench' subdirectory belongs to the paper ["PlanBench: An Extensible Benchmark for Evaluating Large Language Models on Planning and Reasoning about Change"](https://arxiv.org/abs/2206.10498)
 2. The code in 'llm_planning_analysis' subdirectory belongs to the paper ["On the Planning Abilities of Large Language Models--A Critical Investigation"](https://arxiv.org/abs/2305.15771)
-3. **NEW**: 'llm_planning_analysis' subdirectory also contains the code for the paper ["A Systematic Evaluation of the Planning and Scheduling Abilities of the Reasoning Model o1"](https://openreview.net/forum?id=FkKBxp0FhR)
+3. The code in 'llm_planning_analysis/back_prompting_parallel.py' consists of an implementation of the [LLM-Modulo framework](https://openreview.net/forum?id=Th8JPEmH4z)
+4. **NEW**: 'llm_planning_analysis' subdirectory also contains the code for the paper ["A Systematic Evaluation of the Planning and Scheduling Abilities of the Reasoning Model o1"](https://openreview.net/forum?id=FkKBxp0FhR)
 
 
 # PlanBench Static Test Set Leaderboard
