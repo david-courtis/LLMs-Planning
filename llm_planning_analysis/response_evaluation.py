@@ -163,10 +163,10 @@ class ResponseEvaluator:
                         print(f"Instance {instance_dict['instance_id']} response not generated")
                     continue
                 if len(self.specified_instances) > 0:
-                    if instance_dict['instance_id'] not in specified_instances:
+                    if instance_dict['instance_id'] not in self.specified_instances:
                         continue
                     else:
-                        specified_instances.remove(instance_dict['instance_id'])      
+                        self.specified_instances.remove(instance_dict['instance_id'])      
                 
                 if self.verbose:
                     print(f"Evaluting instance {instance_dict['instance_id']}")
@@ -178,7 +178,6 @@ class ResponseEvaluator:
                 try:
                     llm_plan, _ = text_to_plan(llm_response, problem.actions, self.llm_plan_file, self.data)
                     instance_dict["extracted_llm_plan"] = llm_plan
-                    
                     correct = int(validate_plan(self.domain_pddl, cur_instance, self.llm_plan_file))
                 except Exception as e:
                     print(e)

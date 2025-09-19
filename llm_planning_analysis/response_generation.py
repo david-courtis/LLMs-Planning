@@ -80,12 +80,24 @@ class ResponseGenerator:
         #                                              max_memory=max_memory_mapping, trust_remote_code=True)
         # return {'model': model, 'tokenizer': tokenizer}
 
-    def get_per_instance_response(self, structured_output, i, output_json, failed_instances):
+    def _normalize_instance_id(self, instance_id):
+        if isinstance(instance_id, int):
+            return instance_id
+        try:
+            return int(instance_id)
+        except (TypeError, ValueError):
+            return instance_id
+
+    def get_per_instance_response(self, structured_output, i, output_json, failed_instances, specified_instances=None, instance_lookup=None):
+        lookup_key = self._normalize_instance_id(i)
         instance = None
-        for j in structured_output["instances"]:
-            if j["instance_id"] == i:
-                instance = j
-                break
+        if instance_lookup is not None:
+            instance = instance_lookup.get(lookup_key)
+        if instance is None:
+            for j in structured_output["instances"]:
+                if self._normalize_instance_id(j["instance_id"]) == lookup_key:
+                    instance = j
+                    break
         if instance is None:
             print(f"Instance {i} not found in prompts")
             return "", i, 0, None
@@ -96,11 +108,10 @@ class ResponseGenerator:
                 return "", i, 0, None
         else:
             print(f"Getting response for instance {instance['instance_id']}")
-        if len(specified_instances) > 0:
-            if instance['instance_id'] not in specified_instances:
-                return "", i, 0, None
-            else:
-                specified_instances.remove(instance['instance_id'])                   
+        if specified_instances:
+            normalized_instance_id = self._normalize_instance_id(instance['instance_id'])
+            if normalized_instance_id not in specified_instances:
+                return "", instance['instance_id'], 0, None
         
         if self.verbose:
             print(f"Sending query to LLM: Instance {instance['instance_id']}")
@@ -118,14 +129,27 @@ class ResponseGenerator:
             return "", i, 0, None
         if self.verbose:
             print(f"LLM response: {llm_response}")
-        return llm_response, i, time_taken, resp_object
+        return llm_response, instance['instance_id'], time_taken, resp_object
 
-    def get_responses(self, task_name, maxworkers, specified_instances = [], run_till_completion=False):
+    def get_responses(self, task_name, maxworkers, specified_instances=None, run_till_completion=False):
+        def _sort_key(value):
+            if isinstance(value, int):
+                return (0, value)
+            try:
+                return (0, int(value))
+            except (TypeError, ValueError):
+                return (1, str(value))
+
+        if specified_instances is None:
+            specified_instances = set()
+        else:
+            specified_instances = {self._normalize_instance_id(instance_id) for instance_id in specified_instances}
         output_dir = f"responses/{self.data['domain_name']}/{self.engine}/"
         os.makedirs(output_dir, exist_ok=True)
         output_json = output_dir+f"{task_name}.json"
         print(output_json)
         while True:
+            structured_output_changed = False
             if os.path.exists(output_json):
                 with open(output_json, 'r') as file:
                     structured_output = json.load(file)
@@ -133,40 +157,92 @@ class ResponseGenerator:
                 assert os.path.exists(prompt_dir+f"{task_name}.json")
                 with open(prompt_dir+f"{task_name}.json", 'r') as file:
                     prompts = json.load(file)
-                prompts_instances = [inst['instance_id'] for inst in prompts['instances']]
-                output_instances = [inst['instance_id'] for inst in structured_output['instances']]
-                missing_instances = list(set(prompts_instances) - set(output_instances))
-                structured_output['instances'] += [inst for inst in prompts['instances'] if inst['instance_id'] in missing_instances]
+                existing_instance_ids = {self._normalize_instance_id(inst['instance_id']) for inst in structured_output['instances']}
+                for inst in prompts['instances']:
+                    normalized_id = self._normalize_instance_id(inst['instance_id'])
+                    if normalized_id not in existing_instance_ids:
+                        structured_output['instances'].append(inst)
+                        existing_instance_ids.add(normalized_id)
+                        structured_output_changed = True
             else:
                 prompt_dir = f"prompts/{self.data['domain_name']}/"
                 assert os.path.exists(prompt_dir+f"{task_name}.json"), f"Prompt file {prompt_dir+f'{task_name}.json'} does not exist"
                 with open(prompt_dir+f"{task_name}.json", 'r') as file:
                     structured_output = json.load(file)
-                structured_output['engine'] = self.engine          
-        
+                structured_output['engine'] = self.engine
+                structured_output_changed = True
+
+            if structured_output_changed or not os.path.exists(output_json):
+                with open(output_json, 'w') as file:
+                    json.dump(structured_output, file, indent=4)
+
             failed_instances = []
             start = self.data['start']
             end = self.data['end']
-            results = []
-            # maxworkers = 30
-            for i in range(start, end+2, maxworkers):
-                with concurrent.futures.ThreadPoolExecutor(max_workers=maxworkers) as executor:
-                    futures = [executor.submit(self.get_per_instance_response, structured_output, j, output_json, failed_instances) for j in range(i, min(i+maxworkers, end+2))]
-                    for future in concurrent.futures.as_completed(futures):
-                        results.append(future.result())
-            
-                for llm_response, i, time_taken, resp_object in results:
-                    instance = None
-                    for j in structured_output["instances"]:
-                        if j["instance_id"] == i:
-                            instance = j
-                            break
+
+            instance_lookup = {}
+            ordered_ids = []
+            for inst in structured_output["instances"]:
+                normalized_id = self._normalize_instance_id(inst["instance_id"])
+                instance_lookup[normalized_id] = inst
+                ordered_ids.append(normalized_id)
+            if ordered_ids:
+                ordered_ids = list(dict.fromkeys(ordered_ids))
+            ordered_ids.sort(key=_sort_key)
+
+            if specified_instances:
+                missing_instances = sorted(specified_instances - set(instance_lookup.keys()), key=_sort_key)
+                if missing_instances:
+                    missing_str = ", ".join(str(x) for x in missing_instances)
+                    raise ValueError(f"Specified instances {missing_str} not found in prompts")
+                target_ids = [instance_id for instance_id in ordered_ids if instance_id in specified_instances]
+            else:
+                target_ids = ordered_ids
+
+            if isinstance(start, int) and isinstance(end, int):
+                target_ids = [instance_id for instance_id in target_ids if not isinstance(instance_id, int) or (start <= instance_id <= end)]
+
+            if self.ignore_existing:
+                pending_ids = target_ids
+            else:
+                pending_ids = []
+                for instance_id in target_ids:
+                    instance = instance_lookup.get(instance_id)
                     if instance is None:
-                        print(f"Instance {i} not found in prompts")
+                        continue
+                    if instance.get("llm_raw_response"):
+                        continue
+                    pending_ids.append(instance_id)
+
+            for batch_start in range(0, len(pending_ids), maxworkers):
+                batch_ids = pending_ids[batch_start:batch_start + maxworkers]
+                if not batch_ids:
+                    continue
+                batch_results = []
+                with concurrent.futures.ThreadPoolExecutor(max_workers=maxworkers) as executor:
+                    futures = [
+                        executor.submit(
+                            self.get_per_instance_response,
+                            structured_output,
+                            instance_lookup[instance_id]["instance_id"],
+                            output_json,
+                            failed_instances,
+                            specified_instances,
+                            instance_lookup
+                        )
+                        for instance_id in batch_ids if instance_id in instance_lookup
+                    ]
+                    for future in concurrent.futures.as_completed(futures):
+                        batch_results.append(future.result())
+
+                for llm_response, instance_id, time_taken, resp_object in batch_results:
+                    lookup_key = self._normalize_instance_id(instance_id)
+                    instance = instance_lookup.get(lookup_key)
+                    if instance is None:
+                        print(f"Instance {instance_id} not found in prompts")
                         continue
                     if "llm_raw_response" in instance:
                         if instance["llm_raw_response"] and not self.ignore_existing:
-                            # print(f"Instance {instance['instance_id']} already completed")
                             continue
                     if llm_response == "":
                         continue
@@ -187,17 +263,10 @@ class ResponseGenerator:
                         'output': oc,
                         'total': ic+oc
                     }
-                    
 
                     with open(output_json, 'w') as file:
                         json.dump(structured_output, file, indent=4)
 
-            # for i in tqdm(range(start, end+2)):
-            #     instance["llm_raw_response"] = llm_response
-            #     with open(output_json, 'w') as file:
-            #         json.dump(structured_output, file, indent=4)
-                
-            
             if run_till_completion:
                 if len(failed_instances) == 0:
                     break
