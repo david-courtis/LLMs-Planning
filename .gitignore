@@ -10,6 +10,8 @@
 */sas_plan_ver
 utils/__pycache__/*
 
+*__pycache__
+*results
 
 llm_planning_analysis/configs/mystery_blocksworld_with_mapping.yaml
 llm_planning_analysis/diversity_evaluation.py
@@ -36,3 +38,4 @@ plan-bench/results/mystery_blocksworld_3/text-davinci-002/
 plan-bench/results/random_blocksworld/
 plan-bench/results/random_blocksworld_3/
 plan-bench/examples/
+llm_planning_analysis/text_to_pddl.log
