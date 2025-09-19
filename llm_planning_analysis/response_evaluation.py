@@ -10,22 +10,33 @@ from model_parser.writer_new import ModelWriter
 import argparse
 import time
 import concurrent.futures
+from threading import Lock
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel
 import json
 np.random.seed(42)
 from tqdm import tqdm
 class ResponseEvaluator:
-    def __init__(self, config_file, engine, specified_instances, verbose, ignore_existing=False, translator_engine="gpt-4o"):
+    def __init__(self, config_file, engine, specified_instances, verbose, ignore_existing=False, translator_engine="openai/gpt-4o"):
         self.engine = engine
         self.verbose = verbose
         self.ignore_existing = ignore_existing
-        self.specified_instances = specified_instances
+        self.specified_instances = set(specified_instances or [])
+        self._specified_instances_lock = Lock()
         self.translator_engine = translator_engine
         self.data = self.read_config(config_file)
         self.instance_dir = self.data['instance_dir']
         self.domain_pddl = f'./instances/{self.data["domain_file"]}'
         self.llm_plan_file = 'llm_plan'
         self._set_task_params()
+
+    def _should_process_instance(self, instance_id):
+        if not self.specified_instances:
+            return True
+        with self._specified_instances_lock:
+            if instance_id not in self.specified_instances:
+                return False
+            self.specified_instances.remove(instance_id)
+            return True
 
     def read_config(self, config_file):
         with open(config_file, 'r') as file:
@@ -80,15 +91,13 @@ class ResponseEvaluator:
                 if self.verbose:
                     print(f"Instance {instance_dict['instance_id']} response not generated")
                 return None, None, instance_dict["instance_id"]
-            if len(self.specified_instances) > 0:
-                if instance_dict['instance_id'] not in specified_instances:
-                    return None, None, instance_dict["instance_id"]
-                else:
-                    specified_instances.remove(instance_dict['instance_id'])      
+            if not self._should_process_instance(instance_dict['instance_id']):
+                return None, None, instance_dict["instance_id"]
             
             if self.verbose:
                 print(f"Evaluting instance {instance_dict['instance_id']}")
             llm_response = instance_dict["llm_raw_response"]
+            print(llm_response)
             # TODO: support for other translator engines
             llm_plan, raw_translation = text_to_plan_with_llm(llm_response, self.data, instance_dict, self.translator_engine)
             return llm_plan, raw_translation, instance_dict["instance_id"]
@@ -162,11 +171,8 @@ class ResponseEvaluator:
                     if self.verbose:
                         print(f"Instance {instance_dict['instance_id']} response not generated")
                     continue
-                if len(self.specified_instances) > 0:
-                    if instance_dict['instance_id'] not in self.specified_instances:
-                        continue
-                    else:
-                        self.specified_instances.remove(instance_dict['instance_id'])      
+                if not self._should_process_instance(instance_dict['instance_id']):
+                    continue
                 
                 if self.verbose:
                     print(f"Evaluting instance {instance_dict['instance_id']}")
@@ -206,11 +212,8 @@ class ResponseEvaluator:
                     if self.verbose:
                         print(f"Instance {instance_dict['instance_id']} response not generated")
                     continue
-                if len(self.specified_instances) > 0:
-                    if instance_dict['instance_id'] not in specified_instances:
-                        continue
-                    else:
-                        specified_instances.remove(instance_dict['instance_id'])      
+                if not self._should_process_instance(instance_dict['instance_id']):
+                    continue
                 
                 if self.verbose:
                     print(f"Evaluting instance {instance_dict['instance_id']}")
@@ -272,7 +275,7 @@ if __name__=="__main__":
     parser.add_argument('--specific_instances', '-si', nargs='+', type=int, default=[], help='List of instances to run')
     # parser.add_argument('--random_example', type=str, default="False", help='Random example')
     parser.add_argument('--ignore_existing', '-ie', action='store_true', help='Ignore existing output')
-    parser.add_argument('--translator_engine', '-te', type=str, default="gpt-4o", help='Translator engine')
+    parser.add_argument('--translator_engine', '-te', type=str, default="openai/gpt-4o", help='Translator engine')
     parser.add_argument('--no_llm_based_extraction', '-nle', action='store_true', help='No LLM extraction')
     args = parser.parse_args()
     task = args.task

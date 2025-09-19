@@ -1,6 +1,7 @@
-import numpy as np 
-from openai import OpenAI
+import numpy as np
 import time
+
+from .openrouter_client import get_openrouter_client
 def get_ordered_objects(object_names, line):
     objs = []
     pos = []
@@ -29,7 +30,7 @@ def text_to_plan(text, action_set, plan_file, data, cot=False, ground_flag=False
 
     # ADD SPECIFIC TRANSLATION FOR EACH DOMAIN HERE
 
-def text_to_plan_with_llm(text, data, instance_dict, cot=False, ground_flag=False, translator_engine="gpt-4o"):
+def text_to_plan_with_llm(text, data, instance_dict, cot=False, ground_flag=False, translator_engine="openai/gpt-4o"):
     if cot:
         plan = []
         for line in text.split("\n"):
@@ -210,7 +211,7 @@ no plan possible
 
     eng = translator_engine
     query = f"{TRANSLATION_PROMPT}\n\n[RAW TEXT]\n{text}\n\n[PDDL PLAN]"
-    client = OpenAI()
+    client = get_openrouter_client()
     messages=[
         # {"role": "system", "content": "You are a planner assistant who comes up with correct plans."},
     {"role": "user", "content": query}

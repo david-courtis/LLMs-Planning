@@ -8,13 +8,15 @@ import anthropic
 import vertexai
 from vertexai.language_models import TextGenerationModel
 from google import genai
-from google.genai import types 
+from google.genai import types
 from google.oauth2 import service_account
 import boto3
 import json
 from botocore.config import Config
 from rich import print
 
+from .openrouter_client import get_openrouter_client
+
 config = Config(read_timeout=1000)
 
 aws_client = boto3.client('bedrock-runtime', region_name='us-west-2', config=config)
@@ -25,7 +27,7 @@ from botocore.config import Config
 config = Config(read_timeout=1000)
 
 aws_client = boto3.client('bedrock-runtime', region_name='us-west-2', config=config)
-client = OpenAI()
+client = get_openrouter_client()
 def generate_from_bloom(model, tokenizer, query, max_tokens):
     encoded_input = tokenizer(query, return_tensors='pt')
     stop = tokenizer("[PLAN END]", return_tensors='pt')
@@ -103,7 +105,7 @@ def send_query(query, engine, max_tokens, model=None, stop="[STATEMENT]", params
                 if i.type == 'text':
                     return i.text.strip()
         except Exception as e:
-            print("[-]: Failed GPT3 query execution: {}".format(e))
+            print("[-]: Failed query execution: {}".format(e))
             print(response)
     elif engine == 'claude-3.5-sonnet':
         response = anthropic.Anthropic().messages.create(
@@ -118,13 +120,13 @@ def send_query(query, engine, max_tokens, model=None, stop="[STATEMENT]", params
                 if i.type == 'text':
                     return i.text.strip()
         except Exception as e:
-            print("[-]: Failed GPT3 query execution: {}".format(e))
+            print("[-]: Failed query execution: {}".format(e))
             print(response)
 
     elif engine == 'finetuned':
         if model:
             try:
-                response = openai.Completion.create(
+                response = client.completions.create(
                     model=model['model'],
                     prompt=query,
                     temperature=params['temperature'],
@@ -135,7 +137,7 @@ def send_query(query, engine, max_tokens, model=None, stop="[STATEMENT]", params
                     stop=["[PLAN END]"])
             except Exception as e:
                 max_token_err_flag = True
-                print("[-]: Failed GPT3 query execution: {}".format(e))
+                print("[-]: Failed query execution: {}".format(e))
             text_response = response["choices"][0]["text"] if not max_token_err_flag else ""
             return text_response.strip()
         else:
@@ -155,7 +157,7 @@ def send_query(query, engine, max_tokens, model=None, stop="[STATEMENT]", params
             time_taken = e_time - s_time
         except Exception as e:
             max_token_err_flag = True
-            print("[-]: Failed GPT3 query execution: {}".format(e))
+            print("[-]: Failed query execution: {}".format(e))
             time.sleep(3000)
         text_response = response.choices[0].message.content if not max_token_err_flag else "" 
         # print(response)
@@ -173,7 +175,7 @@ def send_query(query, engine, max_tokens, model=None, stop="[STATEMENT]", params
             response = groq_client.chat.completions.create(messages=messages, model=eng, temperature=temp)
         except Exception as e:
             max_token_err_flag = True
-            print("[-]: Failed GPT3 query execution: {}".format(e))
+            print("[-]: Failed query execution: {}".format(e))
         text_response = response.choices[0].message.content if not max_token_err_flag else ""
         time.sleep(2)
         return text_response.strip()
@@ -252,7 +254,7 @@ def send_query(query, engine, max_tokens, model=None, stop="[STATEMENT]", params
                 stop=stop)
         except Exception as e:
             max_token_err_flag = True
-            print("[-]: Failed GPT3 query execution: {}".format(e))
+            print("[-]: Failed query execution: {}".format(e))
 
         text_response = response.choices[0].text if not max_token_err_flag else ""
         return text_response.strip()
@@ -282,7 +284,7 @@ def send_query_multiple(query, engine, max_tokens, params, model=None, stop="[ST
                     stop=["[PLAN END]"])
             except Exception as e:
                 max_token_err_flag = True
-                print("[-]: Failed GPT3 query execution: {}".format(e))
+                print("[-]: Failed query execution: {}".format(e))
             text_responses = dict([(ind,resp["text"].strip()) for ind, resp in enumerate(response["choices"])]) if not max_token_err_flag else ""
             
             # text_response = response["choices"][0]["text"] if not max_token_err_flag else ""
@@ -308,7 +310,7 @@ def send_query_multiple(query, engine, max_tokens, params, model=None, stop="[ST
                     time.sleep(1)
                     continue
                 max_token_err_flag = True
-                print("[-]: Failed GPT3 query execution: {}".format(e))
+                print("[-]: Failed query execution: {}".format(e))
             time.sleep(0.5)
             total_responses += 1
         # text_responses = dict([(ind,resp["message"]["content"].strip()) for ind, resp in enumerate(response["choices"])]) if not max_token_err_flag else ""
@@ -332,7 +334,7 @@ def send_query_multiple(query, engine, max_tokens, params, model=None, stop="[ST
                 stop=stop)
         except Exception as e:
             max_token_err_flag = True
-            print("[-]: Failed GPT3 query execution: {}".format(e))
+            print("[-]: Failed query execution: {}".format(e))
 
         text_responses = dict([(ind,resp["text"].strip()) for ind, resp in enumerate(response["choices"])]) if not max_token_err_flag else ""
         return text_responses
@@ -395,7 +397,7 @@ def send_query_with_feedback(query, engine, messages=[], history=-1, temp=0):
             err_flag = True
             if "maximum context length" in str(e):
                 context_window_hit = True
-            print("[-]: Failed GPT3 query execution: {}".format(e))
+            print("[-]: Failed query execution: {}".format(e))
             st, et = 0, 0
         text_response = "" if err_flag else response.choices[0].message.content
         if not text_response or text_response.isspace():

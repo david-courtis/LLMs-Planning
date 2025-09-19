@@ -1,6 +1,5 @@
 import os
 import random
-import openai
 import numpy as np
 import yaml
 import json

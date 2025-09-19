@@ -1,5 +1,5 @@
 numpy
-openai
+openai>=1.0.0
 PyYAML
 tarski==0.7.0
 transformers
@@ -8,5 +8,4 @@ boto3
 anthropic
 rich
 google-genai
-openai
 vertexai
