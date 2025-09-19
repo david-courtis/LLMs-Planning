@@ -15,7 +15,7 @@ import json
 np.random.seed(42)
 from tqdm import tqdm
 class ResponseEvaluator:
-    def __init__(self, config_file, engine, specified_instances, verbose, ignore_existing=False, translator_engine="gpt-4o"):
+    def __init__(self, config_file, engine, specified_instances, verbose, ignore_existing=False, translator_engine="openai/gpt-4o"):
         self.engine = engine
         self.verbose = verbose
         self.ignore_existing = ignore_existing

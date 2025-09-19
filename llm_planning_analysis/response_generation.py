@@ -171,17 +171,28 @@ class ResponseGenerator:
                     if llm_response == "":
                         continue
                     if isinstance(resp_object, dict):
-                        instance["response_object"] = resp_object
+                        response_payload = resp_object
                     elif isinstance(resp_object, str):
-                        instance["response_object"] = {"response": resp_object}
+                        response_payload = {"response": resp_object}
+                    elif resp_object is None:
+                        response_payload = {}
                     else:
-                        instance["response_object"] = json.loads(resp_object.model_dump_json())
+                        try:
+                            response_payload = response_to_dict(resp_object)
+                        except Exception:
+                            response_payload = {}
+
+                    instance["response_object"] = response_payload
                     instance["llm_raw_response"] = llm_response
                     instance["response_object"]["time_taken"] = time_taken
+
+                    usage = instance["response_object"].get("usage", {})
+                    prompt_tokens = usage.get("prompt_tokens", usage.get("input_tokens", 0))
+                    completion_tokens = usage.get("completion_tokens", usage.get("output_tokens", 0))
                     try:
-                        ic, oc = self.get_costs(instance["response_object"]["usage"]["prompt_tokens"], instance["response_object"]["usage"]["completion_tokens"])
-                    except:
-                        ic, oc =0,0
+                        ic, oc = self.get_costs(prompt_tokens, completion_tokens)
+                    except Exception:
+                        ic, oc = 0, 0
                     instance["response_object"]["costs"] = {
                         'input': ic,
                         'output': oc,

@@ -8,13 +8,15 @@ import anthropic
 import vertexai
 from vertexai.language_models import TextGenerationModel
 from google import genai
-from google.genai import types 
+from google.genai import types
 from google.oauth2 import service_account
 import boto3
 import json
 from botocore.config import Config
 from rich import print
 
+from .llm_client import extract_response_text, get_llm_client, prepare_responses_messages
+
 config = Config(read_timeout=1000)
 
 aws_client = boto3.client('bedrock-runtime', region_name='us-west-2', config=config)
@@ -25,7 +27,37 @@ from botocore.config import Config
 config = Config(read_timeout=1000)
 
 aws_client = boto3.client('bedrock-runtime', region_name='us-west-2', config=config)
-client = OpenAI()
+client = get_llm_client()
+
+
+def _create_responses_request(
+    model: str,
+    *,
+    messages=None,
+    prompt: str | None = None,
+    temperature: float | None = None,
+    max_output_tokens: int | None = None,
+):
+    """Helper to send a request through the OpenAI Responses API."""
+
+    request_kwargs = {"model": model}
+
+    if messages is not None:
+        instructions, conversation = prepare_responses_messages(messages)
+        request_kwargs["input"] = conversation
+        if instructions:
+            request_kwargs["instructions"] = instructions
+    elif prompt is not None:
+        request_kwargs["input"] = prompt
+    else:
+        raise ValueError("Either messages or prompt must be provided for a responses request.")
+
+    if temperature is not None:
+        request_kwargs["temperature"] = temperature
+    if max_output_tokens is not None:
+        request_kwargs["max_output_tokens"] = max_output_tokens
+
+    return client.responses.create(**request_kwargs)
 def generate_from_bloom(model, tokenizer, query, max_tokens):
     encoded_input = tokenizer(query, return_tensors='pt')
     stop = tokenizer("[PLAN END]", return_tensors='pt')
@@ -124,7 +156,8 @@ def send_query(query, engine, max_tokens, model=None, stop="[STATEMENT]", params
     elif engine == 'finetuned':
         if model:
             try:
-                response = openai.Completion.create(
+                response = None
+                response = client.completions.create(
                     model=model['model'],
                     prompt=query,
                     temperature=params['temperature'],
@@ -136,7 +169,7 @@ def send_query(query, engine, max_tokens, model=None, stop="[STATEMENT]", params
             except Exception as e:
                 max_token_err_flag = True
                 print("[-]: Failed GPT3 query execution: {}".format(e))
-            text_response = response["choices"][0]["text"] if not max_token_err_flag else ""
+            text_response = response.choices[0].text if not max_token_err_flag and response is not None else ""
             return text_response.strip()
         else:
             assert model is not None
@@ -148,19 +181,29 @@ def send_query(query, engine, max_tokens, model=None, stop="[STATEMENT]", params
         # {"role": "system", "content": "You are a planner assistant who comes up with correct plans."},
         {"role": "user", "content": query}
         ]
+        response = None
+        time_taken = 0.0
         try:
             s_time = time.time()
-            response = client.chat.completions.create(model=eng, messages=messages)#, temperature=params['temperature'])
+            response = _create_responses_request(
+                eng,
+                messages=messages,
+                temperature=params.get('temperature'),
+                max_output_tokens=max_tokens,
+            )
             e_time = time.time()
             time_taken = e_time - s_time
         except Exception as e:
             max_token_err_flag = True
             print("[-]: Failed GPT3 query execution: {}".format(e))
             time.sleep(3000)
-        text_response = response.choices[0].message.content if not max_token_err_flag else "" 
-        # print(response)
-        print(response.usage)
-        # print(response.usage.completion_tokens_details["reasoning_tokens"])
+
+        text_response = ""
+        if not max_token_err_flag and response is not None:
+            text_response = extract_response_text(response)
+            if hasattr(response, "usage"):
+                print(response.usage)
+
         return text_response.strip(), response, time_taken
     elif '_groq' in engine:
         eng = engine.split('_')[0]
@@ -242,6 +285,7 @@ def send_query(query, engine, max_tokens, model=None, stop="[STATEMENT]", params
         
     else:
         try:
+            response = None
             response = client.completions.create(
                 model=engine,
                 prompt=query,
@@ -254,7 +298,7 @@ def send_query(query, engine, max_tokens, model=None, stop="[STATEMENT]", params
             max_token_err_flag = True
             print("[-]: Failed GPT3 query execution: {}".format(e))
 
-        text_response = response.choices[0].text if not max_token_err_flag else ""
+        text_response = response.choices[0].text if not max_token_err_flag and response is not None else ""
         return text_response.strip()
 
 
@@ -290,7 +334,7 @@ def send_query_multiple(query, engine, max_tokens, params, model=None, stop="[ST
         else:
             assert model is not None
     elif '_chat' in engine:
-        
+
         eng = engine.split('_')[0]
         # print('chatmodels', eng)
         text_responses = {}
@@ -301,8 +345,13 @@ def send_query_multiple(query, engine, max_tokens, params, model=None, stop="[ST
             {"role": "user", "content": query}
             ]
             try:
-                response = client.chat.completions.create(model=eng, messages=messages, temperature=params['temperature'])
-                text_responses[total_responses] = response.choices[0].message.content
+                response = _create_responses_request(
+                    eng,
+                    messages=messages,
+                    temperature=params.get('temperature'),
+                    max_output_tokens=max_tokens,
+                )
+                text_responses[total_responses] = extract_response_text(response)
             except Exception as e:
                 if 'Request timed out' in str(e):
                     time.sleep(1)
@@ -381,23 +430,31 @@ def send_query_with_feedback(query, engine, messages=[], history=-1, temp=0):
     if '_chat' in engine:
         eng = engine.split('_')[0]
         # print('chatmodels', eng)
-        
+
+        response = None
+        st = time.time()
         try:
             if "o1-" in eng:
-                st = time.time()
-                response = client.chat.completions.create(model=eng, messages=sending_messages)
-                et = time.time()
+                response = _create_responses_request(
+                    eng,
+                    messages=sending_messages,
+                )
             else:
-                st = time.time()
-                response = client.chat.completions.create(model=eng, messages=sending_messages, temperature=temp)
-                et = time.time()
-        except Exception as e: 
+                response = _create_responses_request(
+                    eng,
+                    messages=sending_messages,
+                    temperature=temp,
+                )
+            et = time.time()
+        except Exception as e:
             err_flag = True
             if "maximum context length" in str(e):
                 context_window_hit = True
             print("[-]: Failed GPT3 query execution: {}".format(e))
             st, et = 0, 0
-        text_response = "" if err_flag else response.choices[0].message.content
+        text_response = ""
+        if not err_flag and response is not None:
+            text_response = extract_response_text(response)
         if not text_response or text_response.isspace():
             null_response = True
             text_response = ""

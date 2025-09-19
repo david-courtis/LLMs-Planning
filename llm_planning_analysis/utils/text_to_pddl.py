@@ -1,6 +1,11 @@
-import numpy as np 
-from openai import OpenAI
+import numpy as np
 import time
+
+from .llm_client import (
+    extract_response_text,
+    get_llm_client,
+    prepare_responses_messages,
+)
 def get_ordered_objects(object_names, line):
     objs = []
     pos = []
@@ -29,7 +34,7 @@ def text_to_plan(text, action_set, plan_file, data, cot=False, ground_flag=False
 
     # ADD SPECIFIC TRANSLATION FOR EACH DOMAIN HERE
 
-def text_to_plan_with_llm(text, data, instance_dict, cot=False, ground_flag=False, translator_engine="gpt-4o"):
+def text_to_plan_with_llm(text, data, instance_dict, cot=False, ground_flag=False, translator_engine="openai/gpt-4o"):
     if cot:
         plan = []
         for line in text.split("\n"):
@@ -210,20 +215,30 @@ no plan possible
 
     eng = translator_engine
     query = f"{TRANSLATION_PROMPT}\n\n[RAW TEXT]\n{text}\n\n[PDDL PLAN]"
-    client = OpenAI()
+    client = get_llm_client()
     messages=[
         # {"role": "system", "content": "You are a planner assistant who comes up with correct plans."},
     {"role": "user", "content": query}
     ]
     if "raw_translation" not in instance_dict:
         max_token_err_flag = False
+        response = None
         try:
-            response = client.chat.completions.create(model=eng, messages=messages)#, temperature=params['temperature'])
+            instructions, conversation = prepare_responses_messages(messages)
+            request_kwargs = {
+                "model": eng,
+                "input": conversation,
+            }
+            if instructions:
+                request_kwargs["instructions"] = instructions
+            response = client.responses.create(**request_kwargs)
         except Exception as e:
             max_token_err_flag = True
             print("[-]: Failed GPT3 query execution: {}".format(e))
             time.sleep(3000)
-        text_response = response.choices[0].message.content if not max_token_err_flag else "" 
+        text_response = ""
+        if not max_token_err_flag and response is not None:
+            text_response = extract_response_text(response)
     else:
         text_response = instance_dict["raw_translation"]
     if "[PDDL PLAN]" in text_response:

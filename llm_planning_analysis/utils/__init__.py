@@ -1,14 +1,18 @@
 import os
 import random
-import openai
 import numpy as np
 import hashlib
 from tarski.io import PDDLReader
 from tarski.syntax.formulas import *
 
-openai.api_key = os.environ["OPENAI_API_KEY"]
 random.seed(10)
 
+from .llm_client import (
+    extract_response_text,
+    get_llm_client,
+    prepare_responses_messages,
+    response_to_dict,
+)
 from .llm_utils import *
 from .pddl_to_text import *
 from .text_to_pddl import *
@@ -17,7 +21,6 @@ import yaml
 
 import os
 import random
-import openai
 import numpy as np
 import hashlib
 import yaml

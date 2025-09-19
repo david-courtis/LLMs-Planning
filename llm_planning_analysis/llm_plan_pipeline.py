@@ -41,7 +41,7 @@ if __name__=="__main__":
     parser.add_argument('--specific_instances', nargs='+', type=int, default=[], help='List of instances to run')
     parser.add_argument('--random_example', type=str, default="False", help='Random example')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
-    parser.add_argument('--translator_engine', type=str, default="gpt-4o", help='Translator engine')
+    parser.add_argument('--translator_engine', type=str, default="openai/gpt-4o", help='Translator engine')
     parser.add_argument('--no_llm_based_extraction', action='store_true', help='No LLM extraction')
     parser.add_argument('--max_workers', type=int, default=1, help='Max workers')
 
