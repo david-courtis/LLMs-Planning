@@ -31,14 +31,14 @@ def text_to_plan(text, action_set, plan_file, data, cot=False, ground_flag=False
     # ADD SPECIFIC TRANSLATION FOR EACH DOMAIN HERE
 
 def text_to_plan_with_llm(text, data, instance_dict, cot=False, ground_flag=False, translator_engine="openai/gpt-4o"):
-    if cot:
-        plan = []
-        for line in text.split("\n"):
-            if line.strip() == "":
-                continue
-            if 'Action:' in line:
-                plan.append(line.split(":")[1].strip())
-        text = "\n".join(plan)
+    # if cot:
+    #     plan = []
+    #     for line in text.split("\n"):
+    #         if line.strip() == "":
+    #             continue
+    #         if 'Action:' in line:
+    #             plan.append(line.split(":")[1].strip())
+    #     text = "\n".join(plan)
     TRANSLATION_PROMPT = """
 Extract the plan from the text below and convert it to a PDDL plan.
 
@@ -205,16 +205,26 @@ No sequence of actions from the given options can achieve the goal starting from
 No plan is possible—from the initial conditions, it’s impossible to achieve the goal with these actions.
 
 [PDDL PLAN]
-no plan possible
 [PDDL PLAN END]
+Important instructions:
+- The raw text that you must translate will appear after the final `[RAW TEXT]` marker above.
+- Always output the resulting plan between `[PDDL PLAN]` and `[PDDL PLAN END]` without any additional commentary outside the tags.
+- If no plan is described or the goal cannot be achieved, output `no plan possible` between the plan tags.
+- Never ask the user for more information; do your best with the text that is provided.
 """
 
     eng = translator_engine
     query = f"{TRANSLATION_PROMPT}\n\n[RAW TEXT]\n{text}\n\n[PDDL PLAN]"
     client = get_openrouter_client()
+    system_prompt = (
+        "You are an expert translator that extracts PDDL plans from free-form text. "
+        "Read only the content between the `[RAW TEXT]` markers in the user's message. "
+        "Always respond using the `[PDDL PLAN]` and `[PDDL PLAN END]` tags without requesting "
+        "additional details from the user."
+    )
     messages=[
-        # {"role": "system", "content": "You are a planner assistant who comes up with correct plans."},
-    {"role": "user", "content": query}
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": query}
     ]
     if "raw_translation" not in instance_dict:
         max_token_err_flag = False
@@ -249,7 +259,7 @@ no plan possible
                 action_name = action.split()[0].lower()
                 action_objs = action.split()[1:]
             except:
-                print(action)
+                print("issue")
                 continue
             if action_name not in ["unstack", "stack", "pick-up", "put-down", "pickup", "putdown", "pickup", "put_down", "pick_up"]:
                 continue
@@ -268,7 +278,7 @@ no plan possible
                     if data["encoded_objects_compact"][block] in obj:
                         new_action += " " + block
                         break
-            print(action, new_action)
+            # print(action, new_action)
             new_plan.append(f"({new_action})")
             # plan = '\n'.join([i for i in plan.split("\n") if i.startswith("(") and "PDDL PLAN" not in i])
         plan = '\n'.join(new_plan)
@@ -523,12 +533,12 @@ def text_to_plan_blocksworld(text, action_set, plan_file, data, ground_flag=Fals
             for char in ['.', ',', ';', ':', '!', '?', '(', ')', '[', ']', '{', '}', '<', '>', '=', '+', '-', '*', '/']:
                 line = line.replace(char, '')
             action_list = [action in line.split() for action in raw_actions]
-            print(line.split(), raw_actions)
+            # print(line.split(), raw_actions)
             if sum(action_list) == 0:
                 continue
             # TODO: Handle GPT-3 text that can't be parsed as an action
             action = raw_actions[np.where(action_list)[0][0]]
-            print(action)
+            # print(action)
     # print(f"[+]: Saving plan in {plan_file}")
     file = open(plan_file, "wt")
     file.write(plan)

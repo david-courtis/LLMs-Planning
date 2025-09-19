@@ -63,13 +63,30 @@ def fill_template(INIT, GOAL, PLAN, data, zero_shot=False, o4=False):
         text += f"As initial conditions I have that: {INIT.strip()}."
     if GOAL != "":
         text += f"\nMy goal is for the following to be true: {GOAL}."
+    plan_guidance = (
+        "Return only the sequence of actions, with each action written in PDDL format "
+        "`(action arg1 arg2 ...)` on its own line. Do not include any explanation, reasoning, "
+        "or text outside of the actions. Begin your response immediately after the [PLAN] tag "
+        "and end with [PLAN END]."
+    )
     if not zero_shot:
         if o4:
-            text += f"\n\nProvide the plan for the above problem between these two tags [PLAN] and [PLAN END]."
+            text += (
+                "\n\nProvide the plan for the above problem between these two tags [PLAN] and [PLAN END].\n"
+                f"{plan_guidance}"
+            )
         else:
-            text += f"\n\nMy plan is as follows:\n\n[PLAN]{PLAN}"
+            text += (
+                "\n\nMy plan is as follows:\n\n"
+                f"{plan_guidance}\n\n"
+                f"[PLAN]{PLAN}"
+            )
     else:
-        text += f"\n\nTo solve the problem, you will have to provide which actions to take from the initial conditions and in which order in order to achieve the goal conditions. Provide the plan by giving the action names along with the objects \"ACTION_NAME OBJECTS\". Provide the plan between these two tags [PLAN] and [PLAN END]."
+        text += (
+            "\n\nTo solve the problem, you will have to provide which actions to take from the initial conditions and in which order in order to achieve the goal conditions. "
+            "Provide the plan by giving the action names along with the objects \"ACTION_NAME OBJECTS\". Provide the plan between these two tags [PLAN] and [PLAN END].\n"
+            f"{plan_guidance}"
+        )
 
     # TODO: Add this replacement to the yml file -- Use "Translations" dict in yml
     if 'blocksworld' in data['domain_name']:

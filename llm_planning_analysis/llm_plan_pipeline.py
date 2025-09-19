@@ -64,34 +64,34 @@ if __name__=="__main__":
 
     # ========================= Prompt Generation =========================
     assert os.path.exists(config_file), f"Config file {config_file} does not exist"
-    prompt_generator = PromptGenerator(config_file, verbose, ignore_existing, seed)
-    if task == 't1':
-        prompt_generator.task_1_plan_generation(specified_instances, random_example)
-    elif task == 't1_zero':
-        prompt_generator.task_1_plan_generation_zero_shot(specified_instances, random_example)
-    elif task == 't1_cot':
-        prompt_generator.task_1_plan_generation_state_tracking(specified_instances, random_example)
-    elif task == 't1_pddl':
-        prompt_generator.task_1_plan_generation_pddl(specified_instances, random_example)
-    elif task == 't1_zero_pddl':
-        prompt_generator.task_1_plan_generation_zero_shot_pddl(specified_instances, random_example)
-    else:
-        raise NotImplementedError
+    # prompt_generator = PromptGenerator(config_file, verbose, ignore_existing, seed)
+    # if task == 't1':
+    #     prompt_generator.task_1_plan_generation(specified_instances, random_example)
+    # elif task == 't1_zero':
+    #     prompt_generator.task_1_plan_generation_zero_shot(specified_instances, random_example)
+    # elif task == 't1_cot':
+    #     prompt_generator.task_1_plan_generation_state_tracking(specified_instances, random_example)
+    # elif task == 't1_pddl':
+    #     prompt_generator.task_1_plan_generation_pddl(specified_instances, random_example)
+    # elif task == 't1_zero_pddl':
+    #     prompt_generator.task_1_plan_generation_zero_shot_pddl(specified_instances, random_example)
+    # else:
+    #     raise NotImplementedError
     
     # ========================= Response Generation =========================
-    response_generator = ResponseGenerator(config_file, engine, verbose, ignore_existing)
-    task_dict = {
-        't1': 'task_1_plan_generation',
-        't1_zero': 'task_1_plan_generation_zero_shot',
-        't1_cot': 'task_1_plan_generation_state_tracking',
-        't1_pddl': 'task_1_plan_generation_pddl',
-        't1_zero_pddl': 'task_1_plan_generation_zero_shot_pddl',
-    }
-    try:
-        task_name = task_dict[task]
-    except:
-        raise ValueError("Invalid task name")
-    response_generator.get_responses(task_name, max_workers, specified_instances, run_till_completion=run_till_completion)
+    # response_generator = ResponseGenerator(config_file, engine, verbose, ignore_existing)
+    # task_dict = {
+    #     't1': 'task_1_plan_generation',
+    #     't1_zero': 'task_1_plan_generation_zero_shot',
+    #     't1_cot': 'task_1_plan_generation_state_tracking',
+    #     't1_pddl': 'task_1_plan_generation_pddl',
+    #     't1_zero_pddl': 'task_1_plan_generation_zero_shot_pddl',
+    # }
+    # try:
+    #     task_name = task_dict[task]
+    # except:
+    #     raise ValueError("Invalid task name")
+    # response_generator.get_responses(task_name, max_workers, specified_instances, run_till_completion=run_till_completion)
 
 
     # ========================= Response Evaluation =========================

@@ -66,10 +66,24 @@ def fill_template(INIT, GOAL, PLAN, data, instruction=False):
         text += f"As initial conditions I have that, {INIT.strip()}."
     if GOAL != "":
         text += f"\nMy goal is to have that {GOAL}."
+    plan_guidance = (
+        "Return only the sequence of actions, with each action written in PDDL format "
+        "`(action arg1 arg2 ...)` on its own line. Do not include any explanation, reasoning, "
+        "or text outside of the actions. Begin your response immediately after the [PLAN] tag "
+        "and end with [PLAN END]."
+    )
     if not instruction:
-        text += f"\n\nMy plan is as follows:\n\n[PLAN]{PLAN}"
+        text += (
+            "\n\nMy plan is as follows:\n\n"
+            f"{plan_guidance}\n\n"
+            f"[PLAN]{PLAN}"
+        )
     else:
-        text += f"\n\nWhat is the plan to achieve my goal? Just give the actions in the plan."
+        text += (
+            "\n\nWhat is the plan to achieve my goal?\n"
+            f"{plan_guidance}\n\n"
+            "[PLAN]"
+        )
 
     # TODO: Add this replacement to the yml file -- Use "Translations" dict in yml
     if 'blocksworld' in data['domain_name']:

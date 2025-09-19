@@ -147,7 +147,6 @@ class ResponseGenerator:
         output_dir = f"responses/{self.data['domain_name']}/{self.engine}/"
         os.makedirs(output_dir, exist_ok=True)
         output_json = output_dir+f"{task_name}.json"
-        print(output_json)
         while True:
             structured_output_changed = False
             if os.path.exists(output_json):

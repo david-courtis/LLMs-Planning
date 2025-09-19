@@ -97,7 +97,6 @@ class ResponseEvaluator:
             if self.verbose:
                 print(f"Evaluting instance {instance_dict['instance_id']}")
             llm_response = instance_dict["llm_raw_response"]
-            print(llm_response)
             # TODO: support for other translator engines
             llm_plan, raw_translation = text_to_plan_with_llm(llm_response, self.data, instance_dict, self.translator_engine)
             return llm_plan, raw_translation, instance_dict["instance_id"]

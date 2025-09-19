@@ -373,7 +373,7 @@ def check_correctness(query, val_form):
                 json_data = query.split("[JSON_END]")[0].strip()
         try:
             json_data = json.loads(json_data)
-            print(json_data)
+            # print(json_data)
         except:
             if "plan is valid" in query.lower():
                 return True
@@ -411,7 +411,7 @@ def get_llm_verifier_json(query, val_form):
             return json_data
             
         except:
-            print(json_data)
+            # print(json_data)
             return None
     
 
