@@ -80,7 +80,7 @@ class ResponseGenerator:
         #                                              max_memory=max_memory_mapping, trust_remote_code=True)
         # return {'model': model, 'tokenizer': tokenizer}
 
-    def get_per_instance_response(self, structured_output, i, output_json, failed_instances):
+    def get_per_instance_response(self, structured_output, i, output_json, failed_instances, specified_instances=None):
         instance = None
         for j in structured_output["instances"]:
             if j["instance_id"] == i:
@@ -96,7 +96,7 @@ class ResponseGenerator:
                 return "", i, 0, None
         else:
             print(f"Getting response for instance {instance['instance_id']}")
-        if len(specified_instances) > 0:
+        if specified_instances:
             if instance['instance_id'] not in specified_instances:
                 return "", i, 0, None
             else:
@@ -120,7 +120,11 @@ class ResponseGenerator:
             print(f"LLM response: {llm_response}")
         return llm_response, i, time_taken, resp_object
 
-    def get_responses(self, task_name, maxworkers, specified_instances = [], run_till_completion=False):
+    def get_responses(self, task_name, maxworkers, specified_instances=None, run_till_completion=False):
+        if specified_instances is None:
+            specified_instances = set()
+        else:
+            specified_instances = set(specified_instances)
         output_dir = f"responses/{self.data['domain_name']}/{self.engine}/"
         os.makedirs(output_dir, exist_ok=True)
         output_json = output_dir+f"{task_name}.json"
@@ -151,7 +155,7 @@ class ResponseGenerator:
             # maxworkers = 30
             for i in range(start, end+2, maxworkers):
                 with concurrent.futures.ThreadPoolExecutor(max_workers=maxworkers) as executor:
-                    futures = [executor.submit(self.get_per_instance_response, structured_output, j, output_json, failed_instances) for j in range(i, min(i+maxworkers, end+2))]
+                    futures = [executor.submit(self.get_per_instance_response, structured_output, j, output_json, failed_instances, specified_instances) for j in range(i, min(i+maxworkers, end+2))]
                     for future in concurrent.futures.as_completed(futures):
                         results.append(future.result())
             
