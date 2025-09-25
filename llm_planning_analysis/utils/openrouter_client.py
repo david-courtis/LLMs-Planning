@@ -36,5 +36,5 @@ def get_openrouter_client() -> OpenAI:
     _optional_header("OPENROUTER_REFERER", "HTTP-Referer", default_headers)
     _optional_header("OPENROUTER_APP_NAME", "X-Title", default_headers)
 
-    return OpenAI(api_key=api_key, base_url=base_url, default_headers=default_headers)
+    return OpenAI(api_key=api_key, base_url=base_url, default_headers=default_headers, timeout=60.0)
 

@@ -88,10 +88,10 @@ class ResponseEvaluator:
         print(f"Extracting plans for instance {instance_dict['instance_id']}")
         if "llm_raw_response" in instance_dict:
             if not instance_dict["llm_raw_response"]:
-                if self.verbose:
-                    print(f"Instance {instance_dict['instance_id']} response not generated")
+                print(f"Instance {instance_dict['instance_id']} response not generated")
                 return None, None, instance_dict["instance_id"]
             if not self._should_process_instance(instance_dict['instance_id']):
+                print(f"Instance {instance_dict['instance_id']} response not generated because _should_process_instance is false")
                 return None, None, instance_dict["instance_id"]
             
             if self.verbose:
@@ -110,7 +110,7 @@ class ResponseEvaluator:
         total_instances = 0
         if 'plan_generalization' in task_name:
             self._set_task_params(instance_dir=self.data['generalized_instance_dir'])
-        max_workers = 100
+        max_workers = 50
         results = []
         total_correct = 0
         total_instances = 0

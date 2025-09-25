@@ -64,8 +64,7 @@ def fill_template(INIT, GOAL, PLAN, data, zero_shot=False, o4=False):
     if GOAL != "":
         text += f"\nMy goal is for the following to be true: {GOAL}."
     plan_guidance = (
-        "Return only the sequence of actions, with each action written in PDDL format "
-        "`(action arg1 arg2 ...)` on its own line. Do not include any explanation, reasoning, "
+        "Return only the sequence of actions, Do not include any explanation, reasoning, "
         "or text outside of the actions. Begin your response immediately after the [PLAN] tag "
         "and end with [PLAN END]."
     )
